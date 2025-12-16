@@ -1,0 +1,4 @@
+age,job,marital,education,default,housing,loan,contact,month,day_of_week,duration,campaign,pdays,previous,poutcome,emp.var.rate,cons.price.idx,cons.conf.idx,euribor3m,nr.employed,prediction,prob_yes,prob_no
+30,admin.,divorced,basic.4y,no,no,no,cellular,mar,mon,200,1,999,0,failure,-1.8,93.0,-40.0,1.0,5000.0,1,0.5679373559929319,0.432062644007068
+69.5,admin.,divorced,basic.4y,no,no,no,cellular,mar,mon,200,1,999,0,failure,-1.8,93.0,-40.0,1.0,5000.0,1,0.5445026690772972,0.4554973309227028
+63,admin.,married,basic.4y,no,no,no,cellular,mar,mon,200,1,999,0,failure,-1.8,93.0,-40.0,1.0,5000.0,1,0.5923646238054195,0.40763537619458035
