@@ -47,6 +47,16 @@ pip install -r requirements.txt
 
    This will open the **Bank Term Deposit Prediction App** in your browser. Use the sidebar controls to enter client information and press **“Predict Subscription”** to see the model’s prediction and probabilities.
 
+## What process was applied (and why)
+
+- **Data cleaning:** Replace `"unknown"` with missing values, clip numeric outliers using IQR bounds to keep inputs realistic for the model and UI.
+- **Preprocessing pipeline:** One-hot encode categoricals and scale numeric features so tree-based and linear models receive comparable feature magnitudes.
+- **Feature selection:** Model-based selector retains the most informative engineered features, reducing noise and overfitting risk.
+- **Model comparison:** Evaluated multiple classifiers (logistic regression, random forest, gradient boosting, etc.) on ROC-AUC/F1 to balance ranking quality and minority-class recall.
+- **Hyperparameter tuning:** Randomized/ grid search on key parameters (trees, depth, learning rate) to squeeze extra lift without overfitting.
+- **Final choice:** Gradient Boosting selected for best ROC-AUC with competitive F1 on the hold-out split; saved as `final_model.pkl` for deployment.
+- **Deployment:** Streamlit app wraps the pipeline, validates inputs (clips out-of-range numerics, treats `"unknown"` as missing), and logs user runs for traceability.
+
 ## Notes
 
 - If you get an error like `EOFError` or “file not found” when loading `final_model.pkl`, rerun the notebook to regenerate and save the model.
