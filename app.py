@@ -53,6 +53,17 @@ def compute_bounds(df: pd.DataFrame):
 
 
 @st.cache_data
+def compute_summary(df: pd.DataFrame):
+    yes_rate = df["y"].map({"no": 0, "yes": 1}).mean()
+    feature_count = df.shape[1] - 1  # exclude target
+    return {
+        "records": len(df),
+        "yes_rate": yes_rate,
+        "feature_count": feature_count,
+    }
+
+
+@st.cache_data
 def compute_feature_importance(_model, df: pd.DataFrame):
     X = df.drop(columns=["y"])
     y = df["y"].map({"no": 0, "yes": 1})
@@ -89,6 +100,7 @@ if not DATA_PATH.exists():
 
 df = load_data()
 numeric_bounds = compute_bounds(df)
+summary_stats = compute_summary(df)
 
 # ----------------------------------------------------------------------
 # UI helpers
@@ -100,6 +112,14 @@ Use this tool to estimate whether a client will subscribe to a term deposit base
 their profile, contact history, and macro‑economic indicators.
 """
 )
+
+with st.container():
+    col_a, col_b, col_c, col_d = st.columns(4)
+    col_a.metric("Records", f"{summary_stats['records']:,}")
+    col_b.metric("Yes Rate", f"{summary_stats['yes_rate']:.1%}")
+    col_c.metric("Features", f"{summary_stats['feature_count']}")
+    col_d.metric("ROC-AUC", f"{metrics.get('roc_auc', '—')}")
+st.divider()
 
 
 def user_input_features():
@@ -219,15 +239,18 @@ def sanitize_input(df_in: pd.DataFrame, bounds: dict):
 tab_predict, tab_eda = st.tabs(["🔮 Predict", "📊 EDA & Feature Insights"])
 
 with tab_predict:
+    st.markdown("Adjust inputs on the left, then run a prediction below.")
+    st.caption("Values labeled 'unknown' are treated as missing and handled by the model.")
+    st.divider()
     input_df = user_input_features()
 
-    left, right = st.columns(2)
+    left, right = st.columns(2, gap="large")
     with left:
         st.subheader("Client Parameters")
         df_display = input_df.T.reset_index()
         df_display.columns = ["Feature", "Value"]
         df_display["Value"] = df_display["Value"].astype(str)
-        st.dataframe(df_display, width="stretch")
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
 
     with right:
         st.subheader("Prediction Result")
@@ -246,11 +269,13 @@ with tab_predict:
             prob_no, prob_yes = map(float, proba)
 
             verdict = "likely to SUBSCRIBE" if prediction[0] == 1 else "unlikely to subscribe"
-            st.write(f"**Client is {verdict}.**")
+            st.success(f"Client is {verdict}.")
 
             col_a, col_b = st.columns(2)
             col_a.metric("Probability of YES", f"{prob_yes:.1%}")
             col_b.metric("Probability of NO", f"{prob_no:.1%}")
+
+            st.progress(prob_yes, text="Subscription probability")
 
             st.markdown("#### Probability Breakdown")
             proba_df = pd.DataFrame({"Outcome": ["No", "Yes"], "Probability": [prob_no, prob_yes]}).set_index(
@@ -262,12 +287,28 @@ with tab_predict:
             cleaned_df.assign(prediction=int(prediction[0]), prob_yes=prob_yes, prob_no=prob_no).to_csv(
                 log_path, mode="a", header=not log_path.exists(), index=False
             )
+            st.caption("Inputs and prediction appended to user_inputs_log.csv")
+        else:
+            st.info("Click Run Prediction to generate a score for the configured client.")
 
 with tab_eda:
     st.subheader("Dataset overview")
-    st.write("Class balance")
     class_counts = df["y"].value_counts(normalize=True).rename("proportion")
-    st.bar_chart(class_counts)
+    col1, col2 = st.columns([0.65, 0.35], gap="large")
+    with col1:
+        st.write("Class balance")
+        st.bar_chart(class_counts)
+    with col2:
+        st.write("Quick stats")
+        st.metric("Records", f"{summary_stats['records']:,}")
+        st.metric("Yes Rate", f"{summary_stats['yes_rate']:.1%}")
+        if metrics:
+            roc_auc = metrics.get("roc_auc")
+            f1 = metrics.get("f1")
+            if roc_auc is not None:
+                st.metric("ROC-AUC", f"{roc_auc:.3f}")
+            if f1 is not None:
+                st.metric("F1 Score", f"{f1:.3f}")
 
     if metrics:
         st.write("Model metrics")
