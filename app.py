@@ -53,17 +53,17 @@ def compute_bounds(df: pd.DataFrame):
 
 
 @st.cache_data
-def compute_feature_importance(model, df: pd.DataFrame):
+def compute_feature_importance(_model, df: pd.DataFrame):
     X = df.drop(columns=["y"])
     y = df["y"].map({"no": 0, "yes": 1})
     # Limit for responsiveness
     sample = X.sample(frac=0.4, random_state=42)
     y_sample = y.loc[sample.index]
     perm = permutation_importance(
-        model, sample, y_sample, n_repeats=8, scoring="roc_auc", random_state=42
+        _model, sample, y_sample, n_repeats=8, scoring="roc_auc", random_state=42
     )
-    feature_names = model.named_steps["preprocess"].get_feature_names_out()
-    selected_mask = model.named_steps["selector"].get_support()
+    feature_names = _model.named_steps["preprocess"].get_feature_names_out()
+    selected_mask = _model.named_steps["selector"].get_support()
     selected_features = feature_names[selected_mask]
     importances = (
         pd.DataFrame({"feature": selected_features, "importance": perm.importances_mean})
