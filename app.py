@@ -258,6 +258,11 @@ with tab_predict:
 
         if predict_clicked:
             cleaned_df, flagged_cols = sanitize_input(input_df, numeric_bounds)
+            if "pdays" not in cleaned_df.columns:
+                cleaned_df["pdays"] = -1
+
+            cleaned_df["was_contacted"] = np.where(cleaned_df["pdays"] == 999, 0, 1)
+            cleaned_df["pdays"] = cleaned_df["pdays"].replace(999, -1)
             if flagged_cols:
                 st.warning(
                     "Some numeric fields were outside expected range and were clipped: "
