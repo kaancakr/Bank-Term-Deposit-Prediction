@@ -306,7 +306,7 @@ with tab_eda:
         st.metric("Yes Rate", f"{summary_stats['yes_rate']:.1%}")
         if metrics:
             roc_auc = metrics.get("roc_auc")
-            f1 = metrics.get("f1")
+            f1 = metrics.get("f1") or metrics.get("f1_best") or metrics.get("f1_default")
             if roc_auc is not None:
                 st.metric("ROC-AUC", f"{roc_auc:.3f}")
             if f1 is not None:
