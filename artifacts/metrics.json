@@ -1,18 +1,9 @@
 {
-  "roc_auc": 0.9376778686042992,
-  "f1": 0.6417112294472247,
-  "f1_default": 0.5758754863813229,
-  "threshold": 0.7776362542140328,
+  "roc_auc": 0.9461701483499849,
   "best_params": {
-    "clf__solver": "liblinear",
+    "clf__solver": "lbfgs",
     "clf__penalty": "l2",
-    "clf__C": 0.0774263682681127
+    "clf__C": 0.5994842503189409
   },
-  "best_model": "log_reg",
-  "test": {
-    "roc_auc": 0.9376778686042992,
-    "f1": 0.6417112294472247,
-    "f1_default": 0.5758754863813229,
-    "threshold": 0.7776362542140328
-  }
+  "best_model": "log_reg"
 }

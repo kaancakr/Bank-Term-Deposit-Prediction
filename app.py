@@ -243,8 +243,6 @@ with tab_predict:
     st.caption("Values labeled 'unknown' are treated as missing and handled by the model.")
     st.divider()
     input_df = user_input_features()
-    # Derive was_contacted to align with trained pipeline expectation
-    input_df["was_contacted"] = (input_df["pdays"] != 999).astype(int)
 
     left, right = st.columns(2, gap="large")
     with left:
