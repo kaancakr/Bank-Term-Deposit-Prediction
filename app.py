@@ -1,12 +1,5 @@
-"""Streamlit UI for the Bank Marketing classifier.
-
-This version rebuilds the interface and logic to better align with the
-metrics saved from the training notebook (ROC-AUC, F1, tuned threshold).
-"""
-
 import json
 from pathlib import Path
-from typing import Dict, Tuple
 
 import joblib
 import numpy as np
@@ -14,47 +7,44 @@ import pandas as pd
 import streamlit as st
 from sklearn.inspection import permutation_importance
 
+# ----------------------------------------------------------------------
+# Paths and caching helpers
+# ----------------------------------------------------------------------
 BASE_DIR = Path(__file__).parent
 DATA_PATH = BASE_DIR / "bank-additional.csv"
 MODEL_PATH = BASE_DIR / "artifacts" / "final_model.pkl"
 METRICS_PATH = BASE_DIR / "artifacts" / "metrics.json"
-LOG_PATH = BASE_DIR / "user_inputs_log.csv"
-
-st.set_page_config(page_title="Bank Term Deposit Predictor", layout="wide")
 
 
-# ---------------------------------------------------------------------
-# Data/model loading
-# ---------------------------------------------------------------------
+st.set_page_config(page_title="Bank Term Deposit Predictor", page_icon="🏦", layout="wide")
+
+
 @st.cache_resource
 def load_model():
     return joblib.load(MODEL_PATH)
 
 
 @st.cache_data
-def load_metrics() -> Dict:
+def load_metrics():
     if METRICS_PATH.exists():
         return json.loads(METRICS_PATH.read_text())
     return {}
 
 
 @st.cache_data
-def load_data() -> pd.DataFrame:
+def load_data():
     df = pd.read_csv(DATA_PATH, sep=";")
     cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
-    cat_cols = [c for c in cat_cols if c != "y"]
+    cat_cols.remove("y")
     df[cat_cols] = df[cat_cols].replace("unknown", np.nan)
-    df["was_contacted"] = (df["pdays"] != 999).astype(int)
-    df["pdays"] = df["pdays"].replace(999, -1)
-    df["is_retired"] = (df["job"] == "retired").astype(int)
-    df["eco_index"] = df["euribor3m"] * df["cons.conf.idx"]
     return df
 
 
 @st.cache_data
-def compute_bounds(df: pd.DataFrame) -> Dict[str, Tuple[float, float]]:
-    bounds: Dict[str, Tuple[float, float]] = {}
-    for col in df.select_dtypes(exclude=["object"]).columns:
+def compute_bounds(df: pd.DataFrame):
+    numeric_cols = df.select_dtypes(exclude=["object"]).columns
+    bounds = {}
+    for col in numeric_cols:
         q1 = df[col].quantile(0.25)
         q3 = df[col].quantile(0.75)
         iqr = q3 - q1
@@ -63,32 +53,81 @@ def compute_bounds(df: pd.DataFrame) -> Dict[str, Tuple[float, float]]:
 
 
 @st.cache_data
-def compute_summary(df: pd.DataFrame) -> Dict[str, float]:
+def compute_summary(df: pd.DataFrame):
     yes_rate = df["y"].map({"no": 0, "yes": 1}).mean()
-    feature_count = df.shape[1] - 1
-    return {"records": len(df), "yes_rate": yes_rate, "feature_count": feature_count}
+    feature_count = df.shape[1] - 1  # exclude target
+    return {
+        "records": len(df),
+        "yes_rate": yes_rate,
+        "feature_count": feature_count,
+    }
 
 
-# ---------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------
-def pick_threshold(metrics: Dict) -> float:
-    if not metrics:
-        return 0.5
-    return float(
-        metrics.get("threshold")
-        or metrics.get("test", {}).get("threshold")
-        or metrics.get("f1_threshold")
-        or 0.5
+@st.cache_data
+def compute_feature_importance(_model, df: pd.DataFrame):
+    X = df.drop(columns=["y"])
+    y = df["y"].map({"no": 0, "yes": 1})
+    # Limit for responsiveness
+    sample = X.sample(frac=0.4, random_state=42)
+    y_sample = y.loc[sample.index]
+    perm = permutation_importance(
+        _model, sample, y_sample, n_repeats=8, scoring="roc_auc", random_state=42
     )
+    feature_names = _model.named_steps["preprocess"].get_feature_names_out()
+    selected_mask = _model.named_steps["selector"].get_support()
+    selected_features = feature_names[selected_mask]
+    importances = (
+        pd.DataFrame({"feature": selected_features, "importance": perm.importances_mean})
+        .sort_values("importance", ascending=False)
+        .head(15)
+    )
+    return importances
 
 
-def build_input() -> pd.DataFrame:
-    st.sidebar.header("Client configuration")
+# ----------------------------------------------------------------------
+# Load resources
+# ----------------------------------------------------------------------
+if not MODEL_PATH.exists():
+    st.error("Model artifact not found. Please run the notebook to train and save the model.")
+    st.stop()
 
-    # Client profile
-    st.sidebar.subheader("Profile")
-    age = st.sidebar.slider("Age", 18, 100, value=30)
+model = load_model()
+metrics = load_metrics()
+
+if not DATA_PATH.exists():
+    st.error("Dataset not found next to the app. Please add bank-additional.csv.")
+    st.stop()
+
+df = load_data()
+numeric_bounds = compute_bounds(df)
+summary_stats = compute_summary(df)
+
+# ----------------------------------------------------------------------
+# UI helpers
+# ----------------------------------------------------------------------
+st.title("🏦 Bank Term Deposit Prediction App")
+st.markdown(
+    """
+Use this tool to estimate whether a client will subscribe to a term deposit based on
+their profile, contact history, and macro‑economic indicators.
+"""
+)
+
+with st.container():
+    col_a, col_b, col_c, col_d = st.columns(4)
+    col_a.metric("Records", f"{summary_stats['records']:,}")
+    col_b.metric("Yes Rate", f"{summary_stats['yes_rate']:.1%}")
+    col_c.metric("Features", f"{summary_stats['feature_count']}")
+    col_d.metric("ROC-AUC", f"{metrics.get('roc_auc', '—')}")
+st.divider()
+
+
+def user_input_features():
+    st.sidebar.title("🔧 Input Panel")
+    st.sidebar.caption("Configure a single client scenario.")
+
+    st.sidebar.subheader("Client Profile")
+    age = st.sidebar.slider("Age", 18, 100, 30)
     job = st.sidebar.selectbox(
         "Job",
         [
@@ -106,7 +145,7 @@ def build_input() -> pd.DataFrame:
             "unknown",
         ],
     )
-    marital = st.sidebar.selectbox("Marital status", ["divorced", "married", "single", "unknown"])
+    marital = st.sidebar.selectbox("Marital Status", ["divorced", "married", "single", "unknown"])
     education = st.sidebar.selectbox(
         "Education",
         [
@@ -121,32 +160,37 @@ def build_input() -> pd.DataFrame:
         ],
     )
 
-    # Credit status
-    st.sidebar.subheader("Credit status")
-    default = st.sidebar.selectbox("In default?", ["no", "yes", "unknown"])
-    housing = st.sidebar.selectbox("Housing loan", ["no", "yes", "unknown"])
-    loan = st.sidebar.selectbox("Personal loan", ["no", "yes", "unknown"])
+    st.sidebar.subheader("Financial Status")
+    default = st.sidebar.selectbox("Credit in Default?", ["no", "yes", "unknown"])
+    housing = st.sidebar.selectbox("Housing Loan?", ["no", "yes", "unknown"])
+    loan = st.sidebar.selectbox("Personal Loan?", ["no", "yes", "unknown"])
 
-    # Campaign details
-    st.sidebar.subheader("Campaign")
-    contact = st.sidebar.selectbox("Contact type", ["cellular", "telephone"])
-    month = st.sidebar.selectbox("Last contact month", ["mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])
-    day_of_week = st.sidebar.selectbox("Last contact day", ["mon", "tue", "wed", "thu", "fri"])
-    duration = st.sidebar.number_input("Last call duration (s)", min_value=0, value=200, step=10)
-    campaign = st.sidebar.number_input("Contacts in current campaign", min_value=1, value=1, step=1)
-    pdays = st.sidebar.number_input("Days since prior contact (999 = none)", min_value=0, value=999, step=1)
-    previous = st.sidebar.number_input("Previous contacts", min_value=0, value=0, step=1)
+    st.sidebar.subheader("Last Contact Info")
+    contact = st.sidebar.selectbox("Contact Communication Type", ["cellular", "telephone"])
+    month = st.sidebar.selectbox(
+        "Last Contact Month", ["mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    )
+    day_of_week = st.sidebar.selectbox("Last Contact Day", ["mon", "tue", "wed", "thu", "fri"])
+    duration = st.sidebar.number_input(
+        "Duration of last call (seconds)", min_value=0, value=200, help="If duration is 0, target is usually no."
+    )
+
+    st.sidebar.subheader("Campaign History")
+    campaign = st.sidebar.number_input("Number of contacts (current campaign)", min_value=1, value=1)
+    pdays = st.sidebar.number_input(
+        "Days since last contact (previous)", value=999, help="999 means client was not previously contacted"
+    )
+    previous = st.sidebar.number_input("Number of contacts (previous)", min_value=0, value=0)
     poutcome = st.sidebar.selectbox("Outcome of previous campaign", ["failure", "nonexistent", "success"])
 
-    # Macro indicators
-    st.sidebar.subheader("Economy")
-    emp_var_rate = st.sidebar.number_input("Employment variation rate", value=-1.8, step=0.1, format="%.3f")
-    cons_price_idx = st.sidebar.number_input("Consumer price index", value=93.0, step=0.1, format="%.3f")
-    cons_conf_idx = st.sidebar.number_input("Consumer confidence index", value=-40.0, step=0.1, format="%.3f")
-    euribor3m = st.sidebar.number_input("Euribor 3m", value=1.0, step=0.1, format="%.3f")
-    nr_employed = st.sidebar.number_input("Number of employees", value=5000.0, step=10.0, format="%.1f")
+    st.sidebar.subheader("Economic Indicators")
+    emp_var_rate = st.sidebar.number_input("Employment Variation Rate", value=-1.8)
+    cons_price_idx = st.sidebar.number_input("Consumer Price Index", value=93.0)
+    cons_conf_idx = st.sidebar.number_input("Consumer Confidence Index", value=-40.0)
+    euribor3m = st.sidebar.number_input("Euribor 3 Month Rate", value=1.0)
+    nr_employed = st.sidebar.number_input("Number of Employees", value=5000.0)
 
-    df = pd.DataFrame(
+    return pd.DataFrame(
         {
             "age": age,
             "job": job,
@@ -171,145 +215,124 @@ def build_input() -> pd.DataFrame:
         },
         index=[0],
     )
-    return df
 
 
-def align_features(df_in: pd.DataFrame, bounds: Dict[str, Tuple[float, float]]) -> Tuple[pd.DataFrame, list]:
-    df = df_in.replace("unknown", np.nan).copy()
+def sanitize_input(df_in: pd.DataFrame, bounds: dict):
+    cleaned = df_in.replace("unknown", np.nan).copy()
     flagged = []
     for col, (lower, upper) in bounds.items():
-        if col not in df.columns:
+        if col not in cleaned.columns:
             continue
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-        val = df.loc[0, col]
+        cleaned[col] = pd.to_numeric(cleaned[col], errors="coerce")
+        val = cleaned.loc[0, col]
         if pd.isna(val):
             continue
         if val < lower or val > upper:
             flagged.append(col)
-            df.loc[0, col] = float(np.clip(val, lower, upper))
-
-    df["was_contacted"] = (df["pdays"] != 999).astype(int)
-    df["pdays"] = df["pdays"].replace(999, -1)
-    df["is_retired"] = (df["job"] == "retired").astype(int)
-    df["eco_index"] = df["euribor3m"] * df["cons.conf.idx"]
-    return df, flagged
+            cleaned.loc[0, col] = float(np.clip(val, lower, upper))
+    return cleaned, flagged
 
 
-def predict(model, features: pd.DataFrame, threshold: float) -> Dict[str, float]:
-    proba = model.predict_proba(features)[0]
-    prob_no, prob_yes = map(float, proba)
-    return {
-        "prob_yes": prob_yes,
-        "prob_no": prob_no,
-        "label": int(prob_yes >= threshold),
-    }
-
-
-def render_header(summary: Dict, metrics: Dict):
-    st.title("Bank Term Deposit Prediction")
-    st.caption("Single-record scoring with the tuned classifier and decision threshold.")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Records", f"{summary['records']:,}")
-    col2.metric("Yes rate", f"{summary['yes_rate']:.1%}")
-    roc_auc = metrics.get("test", {}).get("roc_auc") or metrics.get("roc_auc")
-    f1 = metrics.get("test", {}).get("f1") or metrics.get("f1")
-    thr = metrics.get("threshold") or metrics.get("test", {}).get("threshold")
-    col3.metric("ROC-AUC", f"{roc_auc:.3f}" if roc_auc else "—")
-    col4.metric("F1 (test)", f"{f1:.3f}" if f1 else "—")
-    if thr:
-        st.info(f"Decision threshold from training: {float(thr):.2f}")
-    st.divider()
-
-
-# ---------------------------------------------------------------------
-# App execution
-# ---------------------------------------------------------------------
-if not MODEL_PATH.exists():
-    st.error("Missing model artifact. Run the notebook to generate artifacts/final_model.pkl.")
-    st.stop()
-if not DATA_PATH.exists():
-    st.error("Dataset bank-additional.csv not found next to the app.")
-    st.stop()
-
-model = load_model()
-metrics = load_metrics()
-threshold = pick_threshold(metrics)
-df = load_data()
-bounds = compute_bounds(df)
-summary = compute_summary(df)
-
-render_header(summary, metrics)
-
-tab_predict, tab_model, tab_data = st.tabs(["Predict", "Model card", "Data preview"])
+# ----------------------------------------------------------------------
+# Layout
+# ----------------------------------------------------------------------
+tab_predict, tab_eda = st.tabs(["🔮 Predict", "📊 EDA & Feature Insights"])
 
 with tab_predict:
-    user_df = build_input()
-    features, flagged = align_features(user_df, bounds)
+    st.markdown("Adjust inputs on the left, then run a prediction below.")
+    st.caption("Values labeled 'unknown' are treated as missing and handled by the model.")
+    st.divider()
+    input_df = user_input_features()
+    # Derive was_contacted to align with trained pipeline expectation
+    input_df["was_contacted"] = (input_df["pdays"] != 999).astype(int)
 
-    st.subheader("Prepared features")
-    st.dataframe(features.T.rename(columns={0: "value"}), hide_index=False, width="stretch")
+    left, right = st.columns(2, gap="large")
+    with left:
+        st.subheader("Client Parameters")
+        df_display = input_df.T.reset_index()
+        df_display.columns = ["Feature", "Value"]
+        df_display["Value"] = df_display["Value"].astype(str)
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
 
-    st.markdown(f"**Decision threshold (from training): {threshold:.2f}**")
-    run = st.button("Run prediction", type="primary")
+    with right:
+        st.subheader("Prediction Result")
+        predict_clicked = st.button("Run Prediction", type="primary")
 
-    if run:
-        result = predict(model, features, threshold)
-        verdict = "Client likely subscribes" if result["label"] == 1 else "Client unlikely to subscribe"
-        st.success(verdict)
-        c1, c2 = st.columns(2)
-        c1.metric("P(yes)", f"{result['prob_yes']:.1%}")
-        c2.metric("P(no)", f"{result['prob_no']:.1%}")
-        st.progress(result["prob_yes"], text="Subscription probability")
-        chart_df = pd.DataFrame(
-            {"Outcome": ["No", "Yes"], "Probability": [result["prob_no"], result["prob_yes"]]}
-        ).set_index("Outcome")
-        st.bar_chart(chart_df)
-        if flagged:
-            st.warning("Clipped out-of-range numeric fields: " + ", ".join(flagged))
-        features.assign(
-            prediction=int(result["label"]),
-            prob_yes=result["prob_yes"],
-            prob_no=result["prob_no"],
-            threshold=threshold,
-        ).to_csv(LOG_PATH, mode="a", header=not LOG_PATH.exists(), index=False)
-        st.caption(f"Appended record to {LOG_PATH.name}")
-    else:
-        st.info("Choose parameters and click Run prediction.")
+        if predict_clicked:
+            cleaned_df, flagged_cols = sanitize_input(input_df, numeric_bounds)
+            if flagged_cols:
+                st.warning(
+                    "Some numeric fields were outside expected range and were clipped: "
+                    + ", ".join(flagged_cols)
+                )
 
-with tab_model:
-    st.subheader("Metrics")
-    if metrics:
-        st.json(metrics)
-    else:
-        st.write("No metrics.json found; run the notebook to generate it.")
+            prediction = model.predict(cleaned_df)
+            proba = model.predict_proba(cleaned_df)[0]
+            prob_no, prob_yes = map(float, proba)
 
-    st.markdown("**Permutation importance (sampled)**")
-    try:
-        sample = df.sample(frac=0.35, random_state=42)
-        X = sample.drop(columns=["y"])
-        y = sample["y"].map({"no": 0, "yes": 1})
-        perm = permutation_importance(
-            model, X, y, n_repeats=6, random_state=42, scoring="roc_auc"
-        )
-        feature_names = model.named_steps["preprocess"].get_feature_names_out()
-        selected_mask = model.named_steps["selector"].get_support()
-        selected = feature_names[selected_mask]
-        n = min(len(selected), len(perm.importances_mean))
-        imp_df = (
-            pd.DataFrame({"feature": selected[:n], "importance": perm.importances_mean[:n]})
-            .sort_values("importance", ascending=False)
-            .head(15)
-        )
-        st.dataframe(imp_df, width="stretch")
-    except Exception as exc:
-        st.warning(f"Could not compute permutation importance: {exc}")
+            verdict = "likely to SUBSCRIBE" if prediction[0] == 1 else "unlikely to subscribe"
+            st.success(f"Client is {verdict}.")
 
-with tab_data:
-    st.subheader("Sample rows")
-    st.dataframe(df.head(), width="stretch")
-    st.markdown("Target distribution")
+            col_a, col_b = st.columns(2)
+            col_a.metric("Probability of YES", f"{prob_yes:.1%}")
+            col_b.metric("Probability of NO", f"{prob_no:.1%}")
+
+            st.progress(prob_yes, text="Subscription probability")
+
+            st.markdown("#### Probability Breakdown")
+            proba_df = pd.DataFrame({"Outcome": ["No", "Yes"], "Probability": [prob_no, prob_yes]}).set_index(
+                "Outcome"
+            )
+            st.bar_chart(proba_df)
+
+            log_path = BASE_DIR / "user_inputs_log.csv"
+            cleaned_df.assign(prediction=int(prediction[0]), prob_yes=prob_yes, prob_no=prob_no).to_csv(
+                log_path, mode="a", header=not log_path.exists(), index=False
+            )
+            st.caption("Inputs and prediction appended to user_inputs_log.csv")
+        else:
+            st.info("Click Run Prediction to generate a score for the configured client.")
+
+with tab_eda:
+    st.subheader("Dataset overview")
     class_counts = df["y"].value_counts(normalize=True).rename("proportion")
-    st.bar_chart(class_counts)
+    col1, col2 = st.columns([0.65, 0.35], gap="large")
+    with col1:
+        st.write("Class balance")
+        st.bar_chart(class_counts)
+    with col2:
+        st.write("Quick stats")
+        st.metric("Records", f"{summary_stats['records']:,}")
+        st.metric("Yes Rate", f"{summary_stats['yes_rate']:.1%}")
+        if metrics:
+            roc_auc = metrics.get("roc_auc")
+            f1 = metrics.get("f1")
+            if roc_auc is not None:
+                st.metric("ROC-AUC", f"{roc_auc:.3f}")
+            if f1 is not None:
+                st.metric("F1 Score", f"{f1:.3f}")
+
+    if metrics:
+        st.write("Model metrics")
+        st.json(metrics)
+
+    st.markdown("### Top permutation importances")
+    try:
+        importances = compute_feature_importance(model, df)
+        st.dataframe(importances, use_container_width=True)
+    except Exception as exc:
+        st.warning(f"Could not compute feature importances: {exc}")
+
+    st.markdown("### Sample of raw data")
+    st.dataframe(df.head(), use_container_width=True)
+
 
 st.markdown("---")
-st.caption("Rebuilt Streamlit UI powered by the tuned scikit-learn pipeline.")
+with st.expander("About this model"):
+    st.markdown(
+        """
+        - Trained on the Bank Marketing dataset (Moro et al., 2014)
+        - Includes preprocessing (imputation, scaling, one-hot encoding) + feature selection
+        - Hyperparameters tuned via randomized search optimizing ROC-AUC
+        """
+    )
