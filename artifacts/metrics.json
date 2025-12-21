@@ -1,36 +1,18 @@
 {
-  "model": "rf",
+  "roc_auc": 0.9469421737814109,
+  "f1": 0.6444444439444444,
+  "f1_default": 0.5962264150943396,
+  "threshold": 0.7990308332410283,
   "best_params": {
-    "clf__n_estimators": 300,
-    "clf__min_samples_leaf": 2,
-    "clf__max_features": null,
-    "clf__max_depth": 12
+    "clf__solver": "liblinear",
+    "clf__penalty": "l2",
+    "clf__C": 12.915496650148826
   },
-  "cv_f1": 0.5894748038229133,
-  "threshold": 0.44999999999999996,
-  "threshold_cv_f1": 0.6013667425968109,
+  "best_model": "log_reg",
   "test": {
-    "f1": 0.5904761904761905,
-    "precision": 0.5166666666666667,
-    "recall": 0.6888888888888889,
-    "roc_auc": 0.9394187102633969,
-    "confusion_matrix": [
-      [
-        676,
-        58
-      ],
-      [
-        28,
-        62
-      ]
-    ]
-  },
-  "class_balance": {
-    "train_yes_rate": 0.10955993930197269,
-    "test_yes_rate": 0.10922330097087378
-  },
-  "artifacts": {
-    "model_path": "/Users/kaancakir/ADA442Project/artifacts/final_model.pkl",
-    "metrics_path": "/Users/kaancakir/ADA442Project/artifacts/metrics.json"
+    "roc_auc": 0.9469421737814109,
+    "f1": 0.6444444439444444,
+    "f1_default": 0.5962264150943396,
+    "threshold": 0.7990308332410283
   }
 }
