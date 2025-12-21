@@ -14,6 +14,7 @@ BASE_DIR = Path(__file__).parent
 DATA_PATH = BASE_DIR / "bank-additional.csv"
 MODEL_PATH = BASE_DIR / "artifacts" / "final_model.pkl"
 METRICS_PATH = BASE_DIR / "artifacts" / "metrics.json"
+DEFAULT_THRESHOLD = 0.5
 
 
 st.set_page_config(page_title="Bank Term Deposit Predictor", page_icon="🏦", layout="wide")
@@ -93,6 +94,7 @@ if not MODEL_PATH.exists():
 
 model = load_model()
 metrics = load_metrics()
+classification_threshold = float(metrics.get("threshold", DEFAULT_THRESHOLD))
 
 if not DATA_PATH.exists():
     st.error("Dataset not found next to the app. Please add bank-additional.csv.")
@@ -114,11 +116,12 @@ their profile, contact history, and macro‑economic indicators.
 )
 
 with st.container():
-    col_a, col_b, col_c, col_d = st.columns(4)
+    col_a, col_b, col_c, col_d, col_e = st.columns(5)
     col_a.metric("Records", f"{summary_stats['records']:,}")
     col_b.metric("Yes Rate", f"{summary_stats['yes_rate']:.1%}")
     col_c.metric("Features", f"{summary_stats['feature_count']}")
     col_d.metric("ROC-AUC", f"{metrics.get('roc_auc', '—')}")
+    col_e.metric("Decision Threshold", f"{classification_threshold:.3f}")
 st.divider()
 
 
@@ -269,18 +272,20 @@ with tab_predict:
                     + ", ".join(flagged_cols)
                 )
 
-            prediction = model.predict(cleaned_df)
             proba = model.predict_proba(cleaned_df)[0]
             prob_no, prob_yes = map(float, proba)
+            pred_label = int(prob_yes >= classification_threshold)
 
-            verdict = "likely to SUBSCRIBE" if prediction[0] == 1 else "unlikely to subscribe"
+            verdict = "likely to SUBSCRIBE" if pred_label == 1 else "unlikely to subscribe"
             st.success(f"Client is {verdict}.")
 
-            col_a, col_b = st.columns(2)
+            col_a, col_b, col_c = st.columns(3)
             col_a.metric("Probability of YES", f"{prob_yes:.1%}")
             col_b.metric("Probability of NO", f"{prob_no:.1%}")
+            col_c.metric("Decision Threshold", f"{classification_threshold:.3f}")
 
             st.progress(prob_yes, text="Subscription probability")
+            st.caption(f"Decision uses YES probability ≥ {classification_threshold:.3f}.")
 
             st.markdown("#### Probability Breakdown")
             proba_df = pd.DataFrame({"Outcome": ["No", "Yes"], "Probability": [prob_no, prob_yes]}).set_index(
@@ -289,7 +294,7 @@ with tab_predict:
             st.bar_chart(proba_df)
 
             log_path = BASE_DIR / "user_inputs_log.csv"
-            cleaned_df.assign(prediction=int(prediction[0]), prob_yes=prob_yes, prob_no=prob_no).to_csv(
+            cleaned_df.assign(prediction=pred_label, prob_yes=prob_yes, prob_no=prob_no).to_csv(
                 log_path, mode="a", header=not log_path.exists(), index=False
             )
             st.caption("Inputs and prediction appended to user_inputs_log.csv")
