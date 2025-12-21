@@ -1,10 +1,9 @@
 {
-  "roc_auc": 0.9374810778080532,
+  "roc_auc": 0.9382228277323645,
   "best_params": {
     "clf__solver": "liblinear",
     "clf__penalty": "l2",
-    "clf__C": 12.915496650148826
+    "clf__C": 35.93813663804626
   },
-  "best_model": "log_reg",
-  "threshold": 0.7110899605682486
+  "best_model": "log_reg"
 }
