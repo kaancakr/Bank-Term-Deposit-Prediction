@@ -22,7 +22,12 @@ st.set_page_config(page_title="Bank Term Deposit Predictor", page_icon="🏦", l
 
 @st.cache_resource
 def load_model():
-    return joblib.load(MODEL_PATH)
+    loaded = joblib.load(MODEL_PATH)
+    clf = loaded.named_steps.get("clf") if hasattr(loaded, "named_steps") else None
+    # Some pickles created with newer scikit-learn may miss attrs on older runtimes.
+    if clf is not None and not hasattr(clf, "multi_class"):
+        clf.multi_class = "auto"
+    return loaded
 
 
 @st.cache_data
