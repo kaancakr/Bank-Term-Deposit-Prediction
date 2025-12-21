@@ -37,6 +37,9 @@ def load_data():
     cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
     cat_cols.remove("y")
     df[cat_cols] = df[cat_cols].replace("unknown", np.nan)
+    # Derive was_contacted; keep pdays for model
+    df["was_contacted"] = (df["pdays"] != 999).astype(int)
+    df["pdays"] = df["pdays"].replace(999, -1)
     return df
 
 
@@ -246,9 +249,8 @@ with tab_predict:
     st.caption("Values labeled 'unknown' are treated as missing and handled by the model.")
     st.divider()
     input_df = user_input_features()
-    # Derive was_contacted to align with trained pipeline expectation
+    # Derive was_contacted from pdays to match training pipeline
     input_df["was_contacted"] = (input_df["pdays"] != 999).astype(int)
-    # Align pdays encoding with training (999 -> -1)
     input_df["pdays"] = input_df["pdays"].replace(999, -1)
 
     left, right = st.columns(2, gap="large")
