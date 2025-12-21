@@ -245,6 +245,8 @@ with tab_predict:
     input_df = user_input_features()
     # Derive was_contacted to align with trained pipeline expectation
     input_df["was_contacted"] = (input_df["pdays"] != 999).astype(int)
+    # Align pdays encoding with training (999 -> -1)
+    input_df["pdays"] = input_df["pdays"].replace(999, -1)
 
     left, right = st.columns(2, gap="large")
     with left:
@@ -252,7 +254,7 @@ with tab_predict:
         df_display = input_df.T.reset_index()
         df_display.columns = ["Feature", "Value"]
         df_display["Value"] = df_display["Value"].astype(str)
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
+        st.dataframe(df_display, width="stretch", hide_index=True)
 
     with right:
         st.subheader("Prediction Result")
@@ -319,12 +321,12 @@ with tab_eda:
     st.markdown("### Top permutation importances")
     try:
         importances = compute_feature_importance(model, df)
-        st.dataframe(importances, use_container_width=True)
+        st.dataframe(importances, width="stretch")
     except Exception as exc:
         st.warning(f"Could not compute feature importances: {exc}")
 
     st.markdown("### Sample of raw data")
-    st.dataframe(df.head(), use_container_width=True)
+    st.dataframe(df.head(), width="stretch")
 
 
 st.markdown("---")
