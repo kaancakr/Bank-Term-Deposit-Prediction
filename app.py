@@ -93,6 +93,9 @@ if not MODEL_PATH.exists():
 
 model = load_model()
 metrics = load_metrics()
+decision_threshold = 0.5
+if metrics:
+    decision_threshold = float(metrics.get("threshold", decision_threshold))
 
 if not DATA_PATH.exists():
     st.error("Dataset not found next to the app. Please add bank-additional.csv.")
@@ -118,7 +121,7 @@ with st.container():
     col_a.metric("Records", f"{summary_stats['records']:,}")
     col_b.metric("Yes Rate", f"{summary_stats['yes_rate']:.1%}")
     col_c.metric("Features", f"{summary_stats['feature_count']}")
-    col_d.metric("ROC-AUC", f"{metrics.get('roc_auc', '—')}")
+    col_d.metric("F1 (test)", f"{metrics.get('test', {}).get('f1', metrics.get('f1', '—'))}")
 st.divider()
 
 
@@ -268,12 +271,12 @@ with tab_predict:
                     + ", ".join(flagged_cols)
                 )
 
-            prediction = model.predict(cleaned_df)
             proba = model.predict_proba(cleaned_df)[0]
             prob_no, prob_yes = map(float, proba)
+            pred_label = int(prob_yes >= decision_threshold)
 
-            verdict = "likely to SUBSCRIBE" if prediction[0] == 1 else "unlikely to subscribe"
-            st.success(f"Client is {verdict}.")
+            verdict = "likely to SUBSCRIBE" if pred_label == 1 else "unlikely to subscribe"
+            st.success(f"Client is {verdict} (threshold={decision_threshold:.2f}).")
 
             col_a, col_b = st.columns(2)
             col_a.metric("Probability of YES", f"{prob_yes:.1%}")
@@ -288,7 +291,7 @@ with tab_predict:
             st.bar_chart(proba_df)
 
             log_path = BASE_DIR / "user_inputs_log.csv"
-            cleaned_df.assign(prediction=int(prediction[0]), prob_yes=prob_yes, prob_no=prob_no).to_csv(
+            cleaned_df.assign(prediction=int(pred_label), prob_yes=prob_yes, prob_no=prob_no).to_csv(
                 log_path, mode="a", header=not log_path.exists(), index=False
             )
             st.caption("Inputs and prediction appended to user_inputs_log.csv")
@@ -307,12 +310,19 @@ with tab_eda:
         st.metric("Records", f"{summary_stats['records']:,}")
         st.metric("Yes Rate", f"{summary_stats['yes_rate']:.1%}")
         if metrics:
-            roc_auc = metrics.get("roc_auc")
-            f1 = metrics.get("f1") or metrics.get("f1_best") or metrics.get("f1_default")
+            roc_auc = metrics.get("test", {}).get("roc_auc") or metrics.get("roc_auc")
+            f1 = (
+                metrics.get("test", {}).get("f1")
+                or metrics.get("f1")
+                or metrics.get("cv_f1")
+                or metrics.get("f1_default")
+            )
             if roc_auc is not None:
                 st.metric("ROC-AUC", f"{roc_auc:.3f}")
             if f1 is not None:
                 st.metric("F1 Score", f"{f1:.3f}")
+            if metrics.get("threshold") is not None:
+                st.metric("Decision Threshold", f"{metrics['threshold']:.2f}")
 
     if metrics:
         st.write("Model metrics")
