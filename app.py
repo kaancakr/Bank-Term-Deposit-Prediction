@@ -249,35 +249,32 @@ with tab_predict:
     st.subheader("Prepared features")
     st.dataframe(features.T.rename(columns={0: "value"}), hide_index=False, width="stretch")
 
-    left, right = st.columns([0.35, 0.65], gap="large")
-    with left:
-        st.markdown("**Decision threshold**")
-        thr_input = st.slider("Threshold", 0.0, 1.0, value=float(threshold), step=0.01)
-        run = st.button("Run prediction", type="primary")
-    with right:
-        if run:
-            result = predict(model, features, thr_input)
-            verdict = "Client likely subscribes" if result["label"] == 1 else "Client unlikely to subscribe"
-            st.success(verdict)
-            c1, c2 = st.columns(2)
-            c1.metric("P(yes)", f"{result['prob_yes']:.1%}")
-            c2.metric("P(no)", f"{result['prob_no']:.1%}")
-            st.progress(result["prob_yes"], text="Subscription probability")
-            chart_df = pd.DataFrame(
-                {"Outcome": ["No", "Yes"], "Probability": [result["prob_no"], result["prob_yes"]]}
-            ).set_index("Outcome")
-            st.bar_chart(chart_df)
-            if flagged:
-                st.warning("Clipped out-of-range numeric fields: " + ", ".join(flagged))
-            features.assign(
-                prediction=int(result["label"]),
-                prob_yes=result["prob_yes"],
-                prob_no=result["prob_no"],
-                threshold=thr_input,
-            ).to_csv(LOG_PATH, mode="a", header=not LOG_PATH.exists(), index=False)
-            st.caption(f"Appended record to {LOG_PATH.name}")
-        else:
-            st.info("Choose parameters and click Run prediction.")
+    st.markdown(f"**Decision threshold (from training): {threshold:.2f}**")
+    run = st.button("Run prediction", type="primary")
+
+    if run:
+        result = predict(model, features, threshold)
+        verdict = "Client likely subscribes" if result["label"] == 1 else "Client unlikely to subscribe"
+        st.success(verdict)
+        c1, c2 = st.columns(2)
+        c1.metric("P(yes)", f"{result['prob_yes']:.1%}")
+        c2.metric("P(no)", f"{result['prob_no']:.1%}")
+        st.progress(result["prob_yes"], text="Subscription probability")
+        chart_df = pd.DataFrame(
+            {"Outcome": ["No", "Yes"], "Probability": [result["prob_no"], result["prob_yes"]]}
+        ).set_index("Outcome")
+        st.bar_chart(chart_df)
+        if flagged:
+            st.warning("Clipped out-of-range numeric fields: " + ", ".join(flagged))
+        features.assign(
+            prediction=int(result["label"]),
+            prob_yes=result["prob_yes"],
+            prob_no=result["prob_no"],
+            threshold=threshold,
+        ).to_csv(LOG_PATH, mode="a", header=not LOG_PATH.exists(), index=False)
+        st.caption(f"Appended record to {LOG_PATH.name}")
+    else:
+        st.info("Choose parameters and click Run prediction.")
 
 with tab_model:
     st.subheader("Metrics")
