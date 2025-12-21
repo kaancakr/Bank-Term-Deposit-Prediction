@@ -37,9 +37,12 @@ def load_data():
     cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
     cat_cols.remove("y")
     df[cat_cols] = df[cat_cols].replace("unknown", np.nan)
-    # Derive was_contacted; keep pdays for model
+    # Derive campaign helper features
     df["was_contacted"] = (df["pdays"] != 999).astype(int)
     df["pdays"] = df["pdays"].replace(999, -1)
+    # Feature engineering
+    df["is_retired"] = (df["job"] == "retired").astype(int)
+    df["eco_index"] = df["euribor3m"] * df["cons.conf.idx"]
     return df
 
 
@@ -252,6 +255,9 @@ with tab_predict:
     # Derive was_contacted from pdays to match training pipeline
     input_df["was_contacted"] = (input_df["pdays"] != 999).astype(int)
     input_df["pdays"] = input_df["pdays"].replace(999, -1)
+    # Feature engineering to align with training
+    input_df["is_retired"] = (input_df["job"] == "retired").astype(int)
+    input_df["eco_index"] = input_df["euribor3m"] * input_df["cons.conf.idx"]
 
     left, right = st.columns(2, gap="large")
     with left:
