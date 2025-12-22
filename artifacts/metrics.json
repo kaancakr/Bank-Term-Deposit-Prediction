@@ -8,19 +8,19 @@
   "calibration": null,
   "threshold": {
     "strategy": "cost_based",
-    "value": 0.410626,
+    "value": 0.484287,
     "details": {
-      "threshold": 0.410626,
-      "cost": 148.0,
-      "tn": 611,
-      "fp": 123,
-      "fn": 5,
-      "tp": 85
+      "threshold": 0.484287,
+      "cost": 132.0,
+      "tn": 642,
+      "fp": 92,
+      "fn": 8,
+      "tp": 82
     }
   },
   "test_metrics": {
-    "pr_auc": 0.6243816385136864,
-    "roc_auc": 0.9435361792310021,
-    "f1_at_threshold": 0.5763888888888888
+    "pr_auc": 0.6222756931634934,
+    "roc_auc": 0.9396457765667575,
+    "f1_at_threshold": 0.5992217898832685
   }
 }
