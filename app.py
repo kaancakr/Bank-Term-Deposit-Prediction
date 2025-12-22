@@ -65,16 +65,34 @@ def compute_summary(df: pd.DataFrame):
 
 @st.cache_data
 def compute_feature_importance(_model, df: pd.DataFrame):
+    def _get_base_estimator(model):
+        # CalibratedClassifierCV wraps the original estimator; unwrap for feature names / selector mask.
+        if hasattr(model, "estimator") and model.estimator is not None:
+            return model.estimator
+        if hasattr(model, "estimator_"):
+            return model.estimator_
+        if hasattr(model, "calibrated_classifiers_") and model.calibrated_classifiers_:
+            cc = model.calibrated_classifiers_[0]
+            if hasattr(cc, "estimator"):
+                return cc.estimator
+            if hasattr(cc, "base_estimator"):
+                return cc.base_estimator
+        return model
+
     X = df.drop(columns=["y"])
     y = df["y"].map({"no": 0, "yes": 1})
     # Limit for responsiveness
     sample = X.sample(frac=0.4, random_state=42)
     y_sample = y.loc[sample.index]
+
+    base = _get_base_estimator(_model)
     perm = permutation_importance(
-        _model, sample, y_sample, n_repeats=8, scoring="roc_auc", random_state=42
+        base, sample, y_sample, n_repeats=8, scoring="roc_auc", random_state=42
     )
-    feature_names = _model.named_steps["preprocess"].get_feature_names_out()
-    selected_mask = _model.named_steps["selector"].get_support()
+    if not hasattr(base, "named_steps"):
+        raise ValueError("Underlying estimator does not expose a sklearn Pipeline (named_steps).")
+    feature_names = base.named_steps["preprocess"].get_feature_names_out()
+    selected_mask = base.named_steps["selector"].get_support()
     selected_features = feature_names[selected_mask]
     importances = (
         pd.DataFrame({"feature": selected_features, "importance": perm.importances_mean})
@@ -118,7 +136,15 @@ with st.container():
     col_a.metric("Records", f"{summary_stats['records']:,}")
     col_b.metric("Yes Rate", f"{summary_stats['yes_rate']:.1%}")
     col_c.metric("Features", f"{summary_stats['feature_count']}")
-    col_d.metric("ROC-AUC", f"{metrics.get('roc_auc', '—')}")
+    test_metrics = metrics.get("test_metrics", {}) if isinstance(metrics, dict) else {}
+    roc_auc = test_metrics.get("roc_auc") if isinstance(test_metrics, dict) else None
+    pr_auc = test_metrics.get("pr_auc") if isinstance(test_metrics, dict) else None
+    if pr_auc is not None:
+        col_d.metric("PR-AUC", f"{pr_auc:.3f}")
+    elif roc_auc is not None:
+        col_d.metric("ROC-AUC", f"{roc_auc:.3f}")
+    else:
+        col_d.metric("PR-AUC", "—")
 st.divider()
 
 
@@ -269,16 +295,28 @@ with tab_predict:
                     + ", ".join(flagged_cols)
                 )
 
-            prediction = model.predict(cleaned_df)
+            threshold = (
+                metrics.get("threshold", {}).get("value", 0.5)
+                if isinstance(metrics, dict)
+                else 0.5
+            )
             proba = model.predict_proba(cleaned_df)[0]
-            prob_no, prob_yes = map(float, proba)
+            classes = getattr(model, "classes_", np.array([0, 1]))
+            try:
+                pos_idx = int(np.where(classes == 1)[0][0])
+            except Exception:
+                pos_idx = 1
+            prob_yes = float(proba[pos_idx])
+            prob_no = float(1.0 - prob_yes) if len(proba) == 2 else float(np.nan)
+            prediction = int(prob_yes >= float(threshold))
 
-            verdict = "likely to SUBSCRIBE" if prediction[0] == 1 else "unlikely to subscribe"
+            verdict = "likely to SUBSCRIBE" if prediction == 1 else "unlikely to subscribe"
             st.success(f"Client is {verdict}.")
 
             col_a, col_b = st.columns(2)
             col_a.metric("Probability of YES", f"{prob_yes:.1%}")
             col_b.metric("Probability of NO", f"{prob_no:.1%}")
+            st.caption(f"Decision threshold: {float(threshold):.3f}")
 
             st.progress(prob_yes, text="Subscription probability")
 
@@ -289,7 +327,7 @@ with tab_predict:
             st.bar_chart(proba_df)
 
             log_path = BASE_DIR / "user_inputs_log.csv"
-            cleaned_df.assign(prediction=int(prediction[0]), prob_yes=prob_yes, prob_no=prob_no).to_csv(
+            cleaned_df.assign(prediction=int(prediction), prob_yes=prob_yes, prob_no=prob_no).to_csv(
                 log_path, mode="a", header=not log_path.exists(), index=False
             )
             st.caption("Inputs and prediction appended to user_inputs_log.csv")
@@ -308,12 +346,16 @@ with tab_eda:
         st.metric("Records", f"{summary_stats['records']:,}")
         st.metric("Yes Rate", f"{summary_stats['yes_rate']:.1%}")
         if metrics:
-            roc_auc = metrics.get("roc_auc")
-            f1 = metrics.get("f1")
+            test_metrics = metrics.get("test_metrics", {}) if isinstance(metrics, dict) else {}
+            roc_auc = test_metrics.get("roc_auc") if isinstance(test_metrics, dict) else None
+            pr_auc = test_metrics.get("pr_auc") if isinstance(test_metrics, dict) else None
+            f1 = test_metrics.get("f1_at_threshold") if isinstance(test_metrics, dict) else None
+            if pr_auc is not None:
+                st.metric("PR-AUC", f"{pr_auc:.3f}")
             if roc_auc is not None:
                 st.metric("ROC-AUC", f"{roc_auc:.3f}")
             if f1 is not None:
-                st.metric("F1 Score", f"{f1:.3f}")
+                st.metric("F1 @ threshold", f"{f1:.3f}")
 
     if metrics:
         st.write("Model metrics")

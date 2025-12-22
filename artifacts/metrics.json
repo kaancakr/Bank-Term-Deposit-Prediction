@@ -1,9 +1,26 @@
 {
-  "roc_auc": 0.9329397517408415,
+  "best_model": "log_reg",
   "best_params": {
     "clf__solver": "lbfgs",
-    "clf__penalty": "l2",
-    "clf__C": 100.0
+    "clf__C": 0.0533669923120631
   },
-  "best_model": "log_reg"
+  "selection_metric": "average_precision",
+  "calibration": null,
+  "threshold": {
+    "strategy": "cost_based",
+    "value": 0.410626,
+    "details": {
+      "threshold": 0.410626,
+      "cost": 148.0,
+      "tn": 611,
+      "fp": 123,
+      "fn": 5,
+      "tp": 85
+    }
+  },
+  "test_metrics": {
+    "pr_auc": 0.6243816385136864,
+    "roc_auc": 0.9435361792310021,
+    "f1_at_threshold": 0.5763888888888888
+  }
 }
